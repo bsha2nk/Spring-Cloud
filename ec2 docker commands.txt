@@ -1,0 +1,27 @@
+sudo yum install docker 
+sudo service docker start
+sudo usermod -a -G docker ec2-user
+
+-- config server
+ssh -i "photo-app-aws.pem" ec2-user@13.202.114.8
+docker run -d --name rabbit-name-management -p 15672:15672 -p 5672:5672 -p 5671:5671 rabbitmq:3-management
+docker run -d -p 8012:8012 -e "spring.rabbitmq.host=172.17.0.2" bsha2nk91/config-server
+
+-- eureka instance
+ssh -i "photo-app-aws.pem" ec2-user@13.235.151.16
+docker run -d -p 8010:8010 -e "spring.cloud.config.uri=http://172.31.2.148:8012" -e "spring.config.import=optional:configserver:http://172.31.2.148:8012" bsha2nk91/sb-eureka-server
+
+-- gateway
+ssh -i "photo-app-aws.pem" ec2-user@13.202.161.206
+docker run -d -p 8082:8082 -e "spring.cloud.config.uri=http://172.31.2.148:8012" -e "spring.config.import=optional:configserver:http://172.31.2.148:8012" -e "spring.rabbitmq.host=172.31.2.148" bsha2nk91/sb-api-gateway
+
+-- elasticsearch
+docker run -d -v esdata1:/usr/share/elasticsearch/data --name elasticsearch -p 9200:9200 -p 9300:9300 -m 700m --network elk-network -e "discovery.type=single-node" elasticsearch:8.1.2
+docker run -d -v esdata1:/usr/share/elasticsearch/data --name elasticsearch -p 9200:9200 -p 9300:9300 -m 700m -e "discovery.type=single-node" elasticsearch:8.1.2
+docker exec -it elasticsearch /usr/share/elasticsearch/bin/elasticsearch-reset-password -u elastic
+
+-- network
+docker network create --driver bridge elk-network
+
+-- kibana
+docker run -d --name kibana --network elk-network -p 5601:5601 -m 700m kibana:8.1.2
